@@ -1,6 +1,9 @@
 			Fast double-difference cross-correlation (FDTCC)
 							Authors: Min Liu & Miao Zhang
 							mliu@cuhk.edu.hk & miao.zhang@dal.ca
+                            
+June 12, 2023. Yifan Yu added cross correlation calculation in frequency cross spectrum following (Poupinet & Ellsworth, 1984).
+
 	1.Usage
 		FDTCC -C(ife/ifd/ifp) -W(wb/wa/wf/wbs/was/wfs) -D(delta/threshold/thre_SNR/thre_shift) -G(trx/trh/tdx/tdh) 
 		-B(low/high) -F(f)
