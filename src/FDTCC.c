@@ -22,6 +22,18 @@
 #include <string.h>
 #include <unistd.h>
 
+// by Yifan YU 2023, June, 12 for frequency spectrum
+#include <gsl/gsl_fit.h>
+#include <gsl/gsl_fft_real.h>
+#include <gsl/gsl_fft_halfcomplex.h>
+
+#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define MAX(X, Y) (((X) < (Y)) ? (Y) : (X))
+#define REAL(z,i) ((z)[2*(i)])
+#define IMAG(z,i) ((z)[2*(i)+1])
+#define PI 3.141592653589793
+//
+
 // define name of ouput files
 #define INPUT1 "Input.p"
 #define INPUT2 "Input.s1"
@@ -138,6 +150,315 @@ float trh;
 float thre_SNR = 1.0;
 float thre_shift = 1.5;
 float timezone = 0 * 3600; //not tested
+
+// Yifan Yu June 12 2023, for cross spetrum functions
+double* convolve(double h[], double x[], int lenH, int lenX, int* lenY)
+{
+    int nconv = lenH+lenX-1;
+    (*lenY) = MAX(lenH,lenX)-MIN(lenH,lenX)+1;
+    int i,j,h_start,x_start,x_end;
+    double *result = (double*) calloc(MAX(lenH,lenX)-MIN(lenH,lenX)+1, sizeof(double));
+
+    double *y = (double*) calloc(nconv, sizeof(double));
+
+    for (i=0; i<nconv; i++)
+    {
+        x_start = MAX(0,i-lenH+1);
+        x_end   = MIN(i+1,lenX);
+        h_start = MIN(i,lenH-1);
+        for(j=x_start; j<x_end; j++)
+        {
+        y[i] += h[h_start--]*x[j];
+        }
+    }
+    for (j=MIN(lenH,lenX)-1;j<MAX(lenH,lenX);j++) {
+        result[j-MIN(lenH,lenX)+1] = y[j];
+    }
+    return result;
+}
+
+int smooth(double x[],int half_win, int lenx) {
+    int window_len = 2 * half_win + 1;
+    double hanning[window_len],tmp[2*(window_len-1)+lenx];
+    int j;
+    double sum=0.0;
+    int lenY;
+    for (j=0;j<window_len-1;j++) {
+        tmp[j] = x[window_len-j-1];
+        tmp[lenx+(window_len-1)+j] = x[lenx-1-j];
+    }
+    for (j=window_len-1;j<lenx+(window_len-1);j++) {
+        tmp[j] = x[j-window_len+1];
+    }
+    for (j=0;j<window_len;j++) {
+        hanning[j] = 0.5-0.5*cos(2*PI*j/(window_len-1));
+        sum += hanning[j];
+    }
+    for (j=0;j<window_len;j++) {
+        hanning[j] = hanning[j] / sum;
+    }
+    double *y = convolve(hanning,tmp,window_len,2*(window_len-1)+lenx,&lenY);
+    for (j=0;j<lenx;j++) {
+        x[j] = y[half_win+j];
+    }
+    return 0;
+}
+
+int cosine_taper(int npts, double p, double* cos_win) {
+    int frac, idx1, idx2, idx3, idx4;
+    int i;
+    if ((p == 1.0) || (p==0.0)) {
+        frac = npts * p / 2.0;
+    }
+    else {
+        frac = npts * p / 2.0 + 0.5;
+    }
+    idx1 = 0;
+    idx2 = frac - 1;
+    idx3 = npts - frac;
+    idx4 = npts - 1;
+    if (idx1 == idx2) {
+        idx2 += 1;
+    }
+    if (idx3 == idx4) {
+        idx3 -= 1;
+    }
+    for (i=idx1; i< (idx2+1); i++) {
+        cos_win[i] = 0.5 * (1.0 - cos(PI * (i - (double)idx1)/(idx2-idx1)));
+    }
+    for (i=idx2+1; i< idx3; i++) {
+        cos_win[i] = 1.0;
+    }
+    for (i=idx3; i< (idx4+1); i++) {
+        cos_win[i] = 0.5 * (1.0 + cos((PI * ((double)idx3 - i)) / (idx4 - idx3)));
+    }
+    if (idx1 == idx2) {
+        cos_win[idx1] = 0.0;
+    }
+
+    if (idx3 == idx4) {
+        cos_win[idx3] = 0.0;
+    }
+
+    return 0;
+}
+
+
+int fft_freq(int n, double dt, double* f) {
+    int i;
+    if (n % 2 == 0) {
+        for (i=0; i<n/2; i++) {
+            f[i] = i/(dt * n);
+        }
+        for (i=n/2; i<n; i++) {
+            f[i] = -(n-i)/(dt * n);
+        }
+    }
+    else {
+        for (i=0; i<(n+1)/2; i++) {
+            f[i] = i / (dt*n);
+        }
+        for (i=(n+1)/2; i<n; i++) {
+            f[i] = -(n-i) / (dt*n);
+        }
+    }
+    return 0;
+}
+
+int getCoherence(double* s1, double* d1, double* d2, double* coh, int N) {
+    int i;
+    for (i = 0; i < 2*N;i++) {
+        coh[i] = 0;
+    }
+    for (i=0; i<N; i++) {
+        if ((d1[i]>0) && (d2[i]>0)) {
+            REAL(coh,i) = s1[i] / (d1[i]*d2[i]);
+            if (REAL(coh,i)>1) {
+                REAL(coh,i)=1;
+            }
+        }
+        else {
+            printf("%f and %f",d1[i], d2[i]);
+        }
+    }
+    return 0;
+}
+
+double calcu_cc(double* sig1, double* sig2, double dt, int wind_len, int stride, double freq_min, double freq_max, double cc) {
+    int half_smooth_win=5;
+    int j;
+    int minind = 0;
+    double cur[wind_len], ref[wind_len], tmp_t[wind_len];
+    double slope, intercept, cov00, cov01, cov11, sumsq;
+    double taperWindow[wind_len];
+    int N = wind_len/2; // Size of the complex data
+    double tmp_fref[wind_len], tmp_fcur[wind_len], fref[wind_len], fcur[wind_len], X[wind_len]; // Array to hold the complex data (real and imaginary parts)
+    double X_real[N], X_imag[N];
+    double dcur[N], dref[N], dcs[N], freq_vect[wind_len], coh[2*N], mcoh=0.0;
+    double weight[N], v[N], phi[N];
+    double e = 0.0, s2x2 = 0.0, sx2 = 0.0;
+    double dt_set[(length-wind_len)/stride+1], time_axis[(length-wind_len)/stride+1], e_set[(length-wind_len)/stride+1], mcoh_set[(length-wind_len)/stride+1];
+    int counter;
+    double x[(length-wind_len)/stride+1],y[(length-wind_len)/stride+1],w[(length-wind_len)/stride+1];
+    gsl_fft_real_wavetable * wavetable;
+    gsl_fft_real_workspace * workspace;
+
+    memset(taperWindow, 0, sizeof(taperWindow));
+
+    while ((minind + wind_len) < length) {
+        for (j=0; j<wind_len; j++)
+        {
+            cur[j] = sig1[minind+j];
+            ref[j] = sig2[minind+j];
+            tmp_t[j] = j;
+        }
+        // detrend
+        gsl_fit_linear(tmp_t, 1, cur, 1, wind_len, &intercept, &slope, &cov00, &cov01, &cov11, &sumsq);
+        for (j=0; j<wind_len; j++)
+        {
+            cur[j] = cur[j] - slope * tmp_t[j] - intercept;
+        }
+
+        gsl_fit_linear(tmp_t, 1, ref, 1, wind_len, &intercept, &slope, &cov00, &cov01, &cov11, &sumsq);
+        for (j=0; j<wind_len; j++)
+        {
+            ref[j] = ref[j] - slope * tmp_t[j] - intercept;
+        }
+
+        // cosine tapering
+        cosine_taper(wind_len, 0.05, taperWindow);
+
+        for (j=0; j<wind_len; j++)
+        {
+            cur[j] = cur[j] * taperWindow[j];
+            ref[j] = ref[j] * taperWindow[j];
+        }
+        
+
+        // do fft
+        for (j=0; j<wind_len; j++)
+        {
+            tmp_fcur[j] = cur[j];
+            tmp_fref[j] = ref[j];
+        }
+
+
+        // Allocate memory for the wavetable and workspace
+        wavetable = gsl_fft_real_wavetable_alloc(wind_len);
+        workspace = gsl_fft_real_workspace_alloc(wind_len);
+
+        // Perform the forward FFT
+        gsl_fft_real_transform(tmp_fref, 1, wind_len, wavetable, workspace);
+        gsl_fft_real_transform(tmp_fcur, 1, wind_len, wavetable, workspace);
+
+        // Free the allocated memory
+        gsl_fft_real_wavetable_free(wavetable);
+        gsl_fft_real_workspace_free(workspace);
+
+        REAL(fcur,0) = tmp_fcur[0];
+        IMAG(fcur, 0) = 0;
+        REAL(fref,0) = tmp_fref[0];
+        IMAG(fref, 0) = 0;
+        for (j=1;j<N;j++) {
+            REAL(fcur,j) = tmp_fcur[2*j-1];
+            IMAG(fcur,j) = tmp_fcur[2*j];
+            REAL(fref,j) = tmp_fref[2*j-1];
+            IMAG(fref,j) = tmp_fref[2*j];
+        }
+        for (j=0; j<N; j++)
+        {
+            dcur[j] = pow(REAL(fcur, j),2) + pow(IMAG(fcur, j),2);
+            dref[j] = pow(REAL(fref, j),2) + pow(IMAG(fref, j),2);
+        }
+        
+        
+        // get cross-spectrum & do filtering
+        for (j=0; j<N; j++)
+        {
+            X_real[j] = REAL(fref,j) * REAL(fcur,j) + IMAG(fref,j) * IMAG(fcur,j);
+            X_imag[j] = IMAG(fref,j) * REAL(fcur, j) - REAL(fref,j) * IMAG(fcur, j);
+            // dcs[j] = sqrt(pow(REAL(X,j),2)+pow(IMAG(X,j),2));
+        }
+        // smoothing
+        smooth(dcur, half_smooth_win, N);
+        smooth(dref, half_smooth_win, N);
+        smooth(X_real, half_smooth_win, N);
+        smooth(X_imag, half_smooth_win, N);
+        for (j=0;j<N;j++)
+        {   
+            dcur[j] = sqrt(dcur[j]);
+            dref[j] = sqrt(dref[j]);
+            REAL(X,j) = X_real[j];
+            IMAG(X,j) = X_imag[j];
+            dcs[j] = sqrt(pow(REAL(X,j),2)+pow(IMAG(X,j),2));
+        }
+
+        // find the values the frequency range
+        fft_freq(wind_len, dt, freq_vect);
+
+
+        // Get coherence and its mean value
+        getCoherence(dcs, dref, dcur, coh, N);
+        for (j=0;j<N;j++) {
+            mcoh += REAL(coh,j) / N;
+        }
+        // get weights
+        for (j=0;j<N;j++) {
+            if ((freq_vect[j] < freq_min) || (freq_vect[j] > freq_max)) {
+                weight[j] = 0;
+                continue;
+            }
+            if (REAL(coh,j)>=0.99) {
+                weight[j] = sqrt(1.0/(1.0/0.9801-1.0) * sqrt(dcs[j]));
+            }
+            else {
+                weight[j] = sqrt(1.0 / (1.0 / REAL(coh,j)*REAL(coh,j) - 1.0) * sqrt(dcs[j]));
+            }
+        }
+        // frequency array
+        for (j=0;j<N;j++) {
+            v[j] = freq_vect[j] * 2 * PI;
+        }
+        // phase
+        phi[0] = 0.0;
+        for (j=1;j<N;j++) {
+            phi[j] = atan2(IMAG(X,j), REAL(X,j));
+        }
+        //regression to dt
+        gsl_fit_wmul(v, 1, weight, 1, phi, 1, N, &slope, &cov11, &sumsq);
+        for (j=1;j<N;j++) {
+            e += pow((phi[j]-slope * v[j]),2)/(N-1);
+            s2x2 += (pow(v[j],2) * pow(weight[j],2));
+            sx2 += (weight[j] * pow(v[j],2));
+        }
+        e = sqrt(e*s2x2/pow(sx2,2));
+        dt_set[minind/stride] = slope;
+        time_axis[minind/stride] = minind + wind_len/2.0;
+        mcoh_set[minind/stride] = mcoh;
+        e_set[minind/stride] = e;
+        minind += stride;
+    }
+    counter = 0;
+    for (j=0; j< ((int)(sizeof(dt_set)/sizeof(dt_set[0])));j++) {
+        w[j] = 0;
+        x[j] = time_axis[j] * dt;
+        y[j] = dt_set[j];
+        if (mcoh_set[j]>=0.65) {
+            if (e_set[j] <= 0.1) {
+                counter += 1;
+                w[j] = 1/e_set[j];
+            }
+        }
+    }
+    if (counter<=2) {
+        printf("not enough data for dt, try smaller window");               
+    }
+    gsl_fit_wmul(x, 1, w, 1, y, 1, ((int)(sizeof(dt_set)/sizeof(dt_set[0]))), &slope, &cov11, &sumsq);
+    cc = slope;
+    return 0;
+}
+
+
 
 int main(int argc, char** argv)
 {
@@ -857,6 +1178,37 @@ void SubccP(PAIR* PT, float** waveP, int* a, int i, int j)
         PT[i].pk[2 * j].shift = 0;
         normMaster = 0.0;
         norm = 0.0;
+        double sig1[Wpoint], sig2[Wpoint];
+        for (k = 0; k <= Wpoint; k++) {
+            sig1[k] = waveP[a[1] * ns + j][k + t_shift];
+            sig2[k] = waveP[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
+        }
+        calcu_cc(sig1,sig2, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 1, 10, cc)
+        PT[i].pk[2 * j].shift = fabs(cc);
+        for (k = 0; k <= Wpoint; k++) {
+            norm += waveP[a[1] * ns + j][k + t_shift] * waveP[a[1] * ns + j][k + t_shift];
+            normMaster += waveP[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
+        }
+        for (k = 0; k <= Npoint; k++) {
+            cc = 0.0;
+            if (k <= ref_shift) {
+                for (kk = ref_shift - k; kk <= Wpoint; kk++) {
+                    cc += waveP[a[0] * ns + j][kk - ref_shift + k + t_shift] * waveP[a[1] * ns + j][kk + t_shift];
+                }
+            } else {
+                for (kk = 0; kk <= Wpoint - (k - ref_shift); kk++) {
+                    cc += waveP[a[0] * ns + j][kk + k - ref_shift + t_shift] * waveP[a[1] * ns + j][kk + t_shift];
+                }
+            }
+            tmp = cc / (sqrt(norm) * sqrt(normMaster));
+            if (fabs(tmp) > PT[i].pk[2 * j].ccv) {
+                PT[i].pk[2 * j].ccv = fabs(tmp);
+            }
+        }
+        if (fabs(PT[i].pk[2 * j].arr1 - PT[i].pk[2 * j].arr2 + PT[i].pk[2 * j].shift) > thre_shift) {
+            PT[i].pk[2 * j].quality = 0;
+        }
+        /*
         for (k = 0; k <= Wpoint; k++) {
             norm += waveP[a[1] * ns + j][k + t_shift] * waveP[a[1] * ns + j][k + t_shift];
             normMaster += waveP[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
@@ -881,6 +1233,7 @@ void SubccP(PAIR* PT, float** waveP, int* a, int i, int j)
         if (fabs(PT[i].pk[2 * j].arr1 - PT[i].pk[2 * j].arr2 + PT[i].pk[2 * j].shift) > thre_shift) {
             PT[i].pk[2 * j].quality = 0;
         }
+        */
     }
 }
 
@@ -918,6 +1271,50 @@ void SubccS(PAIR* PT, float** waveS1, float** waveS2, int* a, int i, int j)
         norm1 = 0.0;
         normMaster2 = 0.0;
         norm2 = 0.0;
+        double sig1[Wpoint], sig2[Wpoint];
+        for (k = 0; k <= Wpoint; k++) {
+            sig1[k] = waveS1[a[1] * ns + j][k + t_shift];
+            sig2[k] = waveS1[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
+        }
+        calcu_cc(sig1,sig2, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 1, 10, cc1)
+
+        for (k = 0; k <= Wpoint; k++) {
+            sig1[k] = waveS2[a[1] * ns + j][k + t_shift];
+            sig2[k] = waveS2[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
+        }
+        calcu_cc(sig1,sig2, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 1, 10, cc2)
+        PT[i].pk[2 * j + 1].shift = (fabs(cc1)+fabs(cc2))/2;
+
+        for (k = 0; k <= Wpoint; k++) {
+            norm1 += waveS1[a[1] * ns + j][tt + k +t_shift] * waveS1[a[1] * ns + j][tt + k +t_shift];
+            normMaster1 += waveS1[a[0] * ns + j][tt + k + t_shift] * waveS1[a[0] * ns + j][tt + k + t_shift];
+            norm2 += waveS2[a[1] * ns + j][tt + k + t_shift] * waveS2[a[1] * ns + j][k + tt + t_shift];
+            normMaster2 += waveS2[a[0] * ns + j][tt + k + t_shift] * waveS2[a[0] * ns + j][tt + k + t_shift];
+        }
+        for (k = 0; k <= Npoint; k++) {
+            cc1 = 0.0;
+            cc2 = 0.0;
+            if (k <= ref_shift) {
+                for (kk = ref_shift - k; kk <= Wpoint; kk++) {
+                    cc1 += waveS1[a[0] * ns + j][tt + kk - ref_shift + k + t_shift] * waveS1[a[1] * ns + j][tt + kk + t_shift];
+                    cc2 += waveS2[a[0] * ns + j][tt + kk - ref_shift + k + t_shift] * waveS2[a[1] * ns + j][tt + kk + t_shift];
+                }
+            } else {
+                for (kk = 0; kk <= Wpoint - (k - ref_shift); kk++) {
+                    cc1 += waveS1[a[0] * ns + j][tt + kk - ref_shift + k + t_shift] * waveS1[a[1] * ns + j][tt + kk + t_shift];
+                    cc2 += waveS2[a[0] * ns + j][tt + kk - ref_shift + k + t_shift] * waveS2[a[1] * ns + j][tt + kk + t_shift];
+                }
+            }
+            tmp = ((cc1 / (sqrt(norm1) * sqrt(normMaster1))) + (cc2 / (sqrt(norm2) * sqrt(normMaster2)))) / 2;
+            if (fabs(tmp) > PT[i].pk[2 * j + 1].ccv) {
+                PT[i].pk[2 * j + 1].ccv = fabs(tmp);
+            }
+        }
+        if (fabs(PT[i].pk[2 * j + 1].arr1 - PT[i].pk[2 * j + 1].arr2 + PT[i].pk[2 * j + 1].shift) > thre_shift)
+            PT[i].pk[2 * j + 1].quality = 0;
+    }
+        
+        /*
         for (k = 0; k <= Wpoint; k++) {
             norm1 += waveS1[a[1] * ns + j][tt + k +t_shift] * waveS1[a[1] * ns + j][tt + k +t_shift];
             normMaster1 += waveS1[a[0] * ns + j][tt + k + t_shift] * waveS1[a[0] * ns + j][tt + k + t_shift];
@@ -947,6 +1344,7 @@ void SubccS(PAIR* PT, float** waveS1, float** waveS2, int* a, int i, int j)
         if (fabs(PT[i].pk[2 * j + 1].arr1 - PT[i].pk[2 * j + 1].arr2 + PT[i].pk[2 * j + 1].shift) > thre_shift)
             PT[i].pk[2 * j + 1].quality = 0;
     }
+    */
 }
 
 void Cal_pSNR(float** wave, int* mark)
