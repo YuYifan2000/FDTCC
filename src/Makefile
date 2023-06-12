@@ -1,8 +1,8 @@
 #mac
-CC = gcc-9 -Os -fopenmp 
+#CC = gcc-9 -Os -fopenmp 
 #linux
-#CC = gcc -Os -fopenmp
-CFLAGS = -L/usr/local/sac/lib -lsac -lsacio -lm -lgsl -lgslcblas
+CC = gcc -Os -fopenmp
+CFLAGS = -L/home/users/yuyifan/opt/sac/lib -lsac -lsacio -lm -mcmodel=large -lgsl -lgslcblas
 BIN = ../bin
 
 FDTCC: FDTCC.o sacio.o 

@@ -130,11 +130,11 @@ PHASEINF* PIN;
 // globe parameters
 int NP = 1700000;
 int NS = 120;
-int NE = 30000;
+int NE = 100000;
 int np; // number of event pairs
 int ns; // number of stations
 int ne; // number of events
-int ntb = 100000; // number of lines in ttt
+int ntb = 500000; // number of lines in ttt
 float wb;
 float wa;
 float wf;
@@ -284,7 +284,7 @@ int getCoherence(double* s1, double* d1, double* d2, double* coh, int N) {
     return 0;
 }
 
-double calcu_cc(double* sig1, double* sig2, double dt, int wind_len, int stride, double freq_min, double freq_max, double cc) {
+double calcu_cc(double* sig1, double* sig2, int length, double dt, int wind_len, int stride, double freq_min, double freq_max, double cc) {
     int half_smooth_win=5;
     int j;
     int minind = 0;
@@ -451,7 +451,7 @@ double calcu_cc(double* sig1, double* sig2, double dt, int wind_len, int stride,
         }
     }
     if (counter<=2) {
-        printf("not enough data for dt, try smaller window");               
+        printf("not enough data for dt, try smaller window\n");               
     }
     gsl_fit_wmul(x, 1, w, 1, y, 1, ((int)(sizeof(dt_set)/sizeof(dt_set[0]))), &slope, &cov11, &sumsq);
     cc = slope;
@@ -1183,7 +1183,7 @@ void SubccP(PAIR* PT, float** waveP, int* a, int i, int j)
             sig1[k] = waveP[a[1] * ns + j][k + t_shift];
             sig2[k] = waveP[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
         }
-        calcu_cc(sig1,sig2, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 1, 10, cc)
+        calcu_cc(sig1,sig2, Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10, cc);
         PT[i].pk[2 * j].shift = fabs(cc);
         for (k = 0; k <= Wpoint; k++) {
             norm += waveP[a[1] * ns + j][k + t_shift] * waveP[a[1] * ns + j][k + t_shift];
@@ -1274,15 +1274,15 @@ void SubccS(PAIR* PT, float** waveS1, float** waveS2, int* a, int i, int j)
         double sig1[Wpoint], sig2[Wpoint];
         for (k = 0; k <= Wpoint; k++) {
             sig1[k] = waveS1[a[1] * ns + j][k + t_shift];
-            sig2[k] = waveS1[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
+            sig2[k] = waveS1[a[0] * ns + j][k + t_shift] * waveS1[a[0] * ns + j][k + t_shift];
         }
-        calcu_cc(sig1,sig2, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 1, 10, cc1)
+        calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10, cc1);
 
         for (k = 0; k <= Wpoint; k++) {
             sig1[k] = waveS2[a[1] * ns + j][k + t_shift];
-            sig2[k] = waveS2[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
+            sig2[k] = waveS2[a[0] * ns + j][k + t_shift] * waveS2[a[0] * ns + j][k + t_shift];
         }
-        calcu_cc(sig1,sig2, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 1, 10, cc2)
+        calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10, cc2);
         PT[i].pk[2 * j + 1].shift = (fabs(cc1)+fabs(cc2))/2;
 
         for (k = 0; k <= Wpoint; k++) {
