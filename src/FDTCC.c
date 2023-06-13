@@ -284,7 +284,7 @@ int getCoherence(double* s1, double* d1, double* d2, double* coh, int N) {
     return 0;
 }
 
-double calcu_cc(double* sig1, double* sig2, int length, double dt, int wind_len, int stride, double freq_min, double freq_max, double cc) {
+double calcu_cc(double* sig1, double* sig2, int length, double dt, int wind_len, int stride, double freq_min, double freq_max) {
     int half_smooth_win=5;
     int j;
     int minind = 0;
@@ -303,7 +303,7 @@ double calcu_cc(double* sig1, double* sig2, int length, double dt, int wind_len,
     gsl_fft_real_wavetable * wavetable;
     gsl_fft_real_workspace * workspace;
 
-    memset(taperWindow, 0, sizeof(taperWindow));
+    //memset(taperWindow, 0, sizeof(taperWindow));
 
     while ((minind + wind_len) < length) {
         for (j=0; j<wind_len; j++)
@@ -412,7 +412,7 @@ double calcu_cc(double* sig1, double* sig2, int length, double dt, int wind_len,
                 weight[j] = sqrt(1.0/(1.0/0.9801-1.0) * sqrt(dcs[j]));
             }
             else {
-                weight[j] = sqrt(1.0 / (1.0 / REAL(coh,j)*REAL(coh,j) - 1.0) * sqrt(dcs[j]));
+                weight[j] = sqrt(1.0 / (1.0 / (REAL(coh,j)*REAL(coh,j)) - 1.0) * sqrt(dcs[j]));
             }
         }
         // frequency array
@@ -454,8 +454,8 @@ double calcu_cc(double* sig1, double* sig2, int length, double dt, int wind_len,
         printf("not enough data for dt, try smaller window\n");               
     }
     gsl_fit_wmul(x, 1, w, 1, y, 1, ((int)(sizeof(dt_set)/sizeof(dt_set[0]))), &slope, &cov11, &sumsq);
-    cc = slope;
-    return 0;
+
+    return slope;
 }
 
 
@@ -1180,10 +1180,10 @@ void SubccP(PAIR* PT, float** waveP, int* a, int i, int j)
         norm = 0.0;
         double sig1[Wpoint], sig2[Wpoint];
         for (k = 0; k <= Wpoint; k++) {
-            sig1[k] = waveP[a[1] * ns + j][k + t_shift];
-            sig2[k] = waveP[a[0] * ns + j][k + t_shift] * waveP[a[0] * ns + j][k + t_shift];
+            sig1[k] = waveP[a[1] * ns + j][k + t_shift];//you might need to multiply some amplication coefficient
+            sig2[k] = waveP[a[0] * ns + j][k + t_shift];
         }
-        calcu_cc(sig1,sig2, Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10, cc);
+        cc = calcu_cc(sig1,sig2, Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10);
         PT[i].pk[2 * j].shift = fabs(cc);
         for (k = 0; k <= Wpoint; k++) {
             norm += waveP[a[1] * ns + j][k + t_shift] * waveP[a[1] * ns + j][k + t_shift];
@@ -1273,16 +1273,16 @@ void SubccS(PAIR* PT, float** waveS1, float** waveS2, int* a, int i, int j)
         norm2 = 0.0;
         double sig1[Wpoint], sig2[Wpoint];
         for (k = 0; k <= Wpoint; k++) {
-            sig1[k] = waveS1[a[1] * ns + j][k + t_shift];
-            sig2[k] = waveS1[a[0] * ns + j][k + t_shift] * waveS1[a[0] * ns + j][k + t_shift];
+            sig1[k] = waveS1[a[1] * ns + j][tt + k + t_shift]; //you might need to add some amplifaction coefficent
+            sig2[k] = waveS1[a[0] * ns + j][tt + k + t_shift];
         }
-        calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10, cc1);
+        cc1 = calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 0.1, 10);
 
         for (k = 0; k <= Wpoint; k++) {
-            sig1[k] = waveS2[a[1] * ns + j][k + t_shift];
-            sig2[k] = waveS2[a[0] * ns + j][k + t_shift] * waveS2[a[0] * ns + j][k + t_shift];
+            sig1[k] = waveS2[a[1] * ns + j][tt + k + t_shift];
+            sig2[k] = waveS2[a[0] * ns + j][tt + k + t_shift];
         }
-        calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10, cc2);
+        cc2 = calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 0.1, 10);
         PT[i].pk[2 * j + 1].shift = (fabs(cc1)+fabs(cc2))/2;
 
         for (k = 0; k <= Wpoint; k++) {
