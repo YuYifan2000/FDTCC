@@ -493,12 +493,20 @@ double calcu_cc(double* sig1, double* sig2, int length, double dt, int wind_len,
         //        w[j] = 1/e_set[j];
         //    }
         //}
+        if (isnan(dt_set[j])) {
+            continue;
+        }
         if (e_set[j]<=1) {
             counter += 1/e_set[j];
             slope += 1/e_set[j] * dt_set[j];
         } 
     }
+    if (counter == 0.0) {
+        slope = -1.0;
+    } 
+    else {
     slope = slope / counter;
+    }
     //if (counter<=2) {
     //    printf("not enough data for dt, try smaller window\n");               
     //}
@@ -1229,11 +1237,15 @@ void SubccP(PAIR* PT, float** waveP, int* a, int i, int j)
         norm = 0.0;
         double sig1[Wpoint], sig2[Wpoint];
         for (k = 0; k <= Wpoint; k++) {
-            sig1[k] = waveP[a[1] * ns + j][k + t_shift];//you might need to multiply some amplication coefficient
-            sig2[k] = waveP[a[0] * ns + j][k + t_shift];
+            sig1[k] = waveP[a[1] * ns + j][k + t_shift]*pow(10,8);//you might need to multiply some amplication coefficient
+            sig2[k] = waveP[a[0] * ns + j][k + t_shift]*pow(10,8);
         }
-        cc = calcu_cc(sig1,sig2, Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 4, 0.1, 10);
+        cc = calcu_cc(sig1,sig2, Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))-1), 2, 0.1, 20);
+        if (cc == -1.0) {
+            PT[i].pk[2 * j].quality = 0;
+        }
         PT[i].pk[2 * j].shift = fabs(cc);
+        
         
         PT[i].pk[2 * j].ccv = get_ccv(sig1,sig2,Wpoint)/sqrt(get_ccv(sig1,sig1,Wpoint)*get_ccv(sig2,sig2,Wpoint));
         if (fabs(PT[i].pk[2 * j].arr1 - PT[i].pk[2 * j].arr2 + PT[i].pk[2 * j].shift) > thre_shift) {
@@ -1304,17 +1316,23 @@ void SubccS(PAIR* PT, float** waveS1, float** waveS2, int* a, int i, int j)
         norm2 = 0.0;
         double sig1[Wpoint], sig2[Wpoint];
         for (k = 0; k <= Wpoint; k++) {
-            sig1[k] = waveS1[a[1] * ns + j][tt + k + t_shift]; //you might need to add some amplifaction coefficent
-            sig2[k] = waveS1[a[0] * ns + j][tt + k + t_shift];
+            sig1[k] = waveS1[a[1] * ns + j][tt + k + t_shift]*pow(10,8); //you might need to add some amplifaction coefficent
+            sig2[k] = waveS1[a[0] * ns + j][tt + k + t_shift]*pow(10,8);
         }
-        cc1 = calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 0.1, 10);
+        cc1 = calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 2, 0.1, 20);
+        if (cc1 == -1.0) {
+            PT[i].pk[2 * j + 1].quality = 0;
+        }
         norm1 = get_ccv(sig1,sig2,Wpoint) / sqrt(get_ccv(sig1,sig1,Wpoint) * get_ccv(sig2,sig2,Wpoint));
         for (k = 0; k <= Wpoint; k++) {
-            sig1[k] = waveS2[a[1] * ns + j][tt + k + t_shift];
-            sig2[k] = waveS2[a[0] * ns + j][tt + k + t_shift];
+            sig1[k] = waveS2[a[1] * ns + j][tt + k + t_shift]*pow(10,8);
+            sig2[k] = waveS2[a[0] * ns + j][tt + k + t_shift]*pow(10,8);
         }
-        cc2 = calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 4, 0.1, 10);
+        cc2 = calcu_cc(sig1,sig2,Wpoint, delta, (int)pow(2, floor(log(Wpoint)/log(2))), 2, 0.1, 20);
         norm2 = get_ccv(sig1,sig2,Wpoint) / sqrt(get_ccv(sig1,sig1,Wpoint) * get_ccv(sig2,sig2,Wpoint));
+        if (cc2 == -1.0) {
+            PT[i].pk[2 * j + 1].quality = 0;
+        }
         PT[i].pk[2 * j + 1].shift = (fabs(cc1)+fabs(cc2))/2;
         PT[i].pk[2 * j + 1].ccv = (norm1+norm2)/2;
         
