@@ -25,7 +25,7 @@ C=1/1/1
 #for SNR calculation at near stations 
 #Note: origin time O is set as ZERO for both continuous data (beginning of the day) 
 #and event segment (event origin time), see waveform examples.
-F=1
+F=0
 #BP filter, low and high B=-1/-1 will not fiter the data 
 B=2/8
 

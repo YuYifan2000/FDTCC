@@ -907,6 +907,7 @@ int main(int argc, char** argv)
             SubccP(PT, waveP, pair_point, i, j);
         }
     }
+
 #pragma omp barrier
 #pragma omp parallel for shared(PT, EVE, waveS1, waveS2) private(i, j, \
     pair_point)
@@ -1245,12 +1246,17 @@ void SubccP(PAIR* PT, float** waveP, int* a, int i, int j)
             PT[i].pk[2 * j].quality = 0;
         }
         PT[i].pk[2 * j].shift = fabs(cc);
-        
-        
+         
         PT[i].pk[2 * j].ccv = get_ccv(sig1,sig2,Wpoint)/sqrt(get_ccv(sig1,sig1,Wpoint)*get_ccv(sig2,sig2,Wpoint));
         if (fabs(PT[i].pk[2 * j].arr1 - PT[i].pk[2 * j].arr2 + PT[i].pk[2 * j].shift) > thre_shift) {
             PT[i].pk[2 * j].quality = 0;
         }
+        for (k=0;k<=Wpoint;k++) {
+            free(sig1[k]);
+            free(sig2[k]);
+        }
+        free(sig1);
+        free(sig2);
         /*
         for (k = 0; k <= Wpoint; k++) {
             norm += waveP[a[1] * ns + j][k + t_shift] * waveP[a[1] * ns + j][k + t_shift];
