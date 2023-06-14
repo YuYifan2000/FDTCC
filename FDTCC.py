@@ -47,8 +47,6 @@ def Search_event(PO, EVE, n,ne):
 def Cal_tt(PO, PT, EVE, ST,npp, ns, ne, trx, tdx,tdh, TB):
     for i in range(0, npp):
         event = Search_event(PO, EVE, i, ne)
-        PT[i]["event1"] = PO[i]["event1"]
-        PT[i]["event2"] = PO[i]["event2"]
         k = 0
         for j in range(0, ns):
             PT[i]["pk"][k]["sta"] = ST[j]["sta"]
@@ -265,7 +263,7 @@ def SubccS(PT, waveS1, waveS2, event, i,j, was, wbs, wfs,dt,ns,cc_threshold):
 
 # size of problem setting
 NPP_ = 400000
-NS = 1000
+NS = 100
 NE = 40000
 ntb = 4000
 
@@ -285,7 +283,7 @@ dt_path = './Demo/dt.ct'
 pha_path = './Demo/hypoDD.pha'
 
 # for p type
-wb = 0.2
+wb = 0.5
 wa = 1.0
 wf = 0.3 #maximum shift length?
 
@@ -344,7 +342,7 @@ for line in Lines:
         content = line.split()
         PO[k-1]["pk"][kk]={"sta":content[0], "phase":content[4],"arr1":float(content[1]),"arr2":float(content[2]),"ccv":-1,"shift":-1,"quality":0,"diff":-1}
         kk = kk + 1
-        if kk > NS:
+        if kk > (2*NS):
             raise KeyError("Need bigger NS")
 dtct.close()
 npp = k
@@ -402,7 +400,7 @@ for i in range(0, npp):
     pk =[]
     for j in range(0, 2*NS):
         pk.append({"sta":"", "phase":"","arr1":-1,"arr2":-1,"ccv":-1,"shift":-1,"quality":0,"diff":-1})
-    PT[i] = {"pk":pk}
+    PT[i] = {"pk":pk, "event1":PO[i]["event1"], "event2":PO[i]["event2"]}
 
 PT = Cal_tt(PO, PT, EVE, ST,npp, ns, ne, trx, tdx,tdh, TB)
 print("done creating database")
@@ -465,7 +463,7 @@ waveS1 = [None] * (ne*ns)
 waveS2 = [None] * (ne*ns)
 for i in range(0, ne*ns):
     markP[i] = 1; markS1[i]=1;markS2[i]=1
-    try: 
+    try:
         waveP[i] =read_sac(staP[i], ptriger[i] - wb - 1, ptriger[i] + wa + 1,bp_filter)
     except:
         markP[i] = 0
