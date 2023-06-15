@@ -89,10 +89,9 @@ def mwcs(sig1,sig2,dt):
         e = np.sqrt(e * s2x2 / sx2**2)
         delta_weight.append(1./e)
     delta_t = np.array(delta_t)
-    print(delta_t)
     delta_weight = np.array(delta_weight)
 
-    return abs(np.sum(delta_t*delta_weight/sum(delta_weight))),ccv
+    return np.sum(delta_t*delta_weight/sum(delta_weight)),ccv
 
 t = np.linspace(0.01,2,200)
 sig1 = np.sin(4*np.pi*t)
