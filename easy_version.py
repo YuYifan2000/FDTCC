@@ -41,7 +41,10 @@ def read_sac(filename, st,et, filter):
         f.detrend('linear')
         f.taper(0.05, type='cosine')
         f.filter('bandpass', freqmin=filter[0], freqmax=filter[1])
-    data = f[0].data
+    try:
+        data = f[0].data
+    except:
+        data = None
     return data
 
 def mwcs(sig1,sig2,dt):
@@ -145,7 +148,13 @@ def calcu_P(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
     et2 = date2+timedelta(seconds=arr2+wa)
     sig1 = read_sac(filepath1, st1,et1,filter)
     sig2 = read_sac(filepath2, st2,et2,filter)
-    delta_t, cvv = mwcs(sig1,sig2,dt)
+    if ((sig1 is None) | (sig2 is None)):
+        print(filepath1, st1,et1)
+        print(filepath2, st2,et2)
+        delta_t = 0
+        cvv = 0
+    else:
+        delta_t, cvv = mwcs(sig1,sig2,dt)
     return arr1+delta_t-arr2, cvv
 
 def calcu_S(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, waveformdir, filter, tb,tb_parameter):
@@ -166,27 +175,45 @@ def calcu_S(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
     filepath2 = f'{waveformdir}/{eve2.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}N'
     sig1 = read_sac(filepath1, st1,et1,filter)
     sig2 = read_sac(filepath2, st2,et2,filter)
-    delta_t1, cvv1 = mwcs(sig1,sig2,dt)
+    if ((sig1 is None) | (sig2 is None)):
+        print(filepath1, st1,et1)
+        print(filepath2, st2,et2)                                           
+        delta_t1 = 0
+        cvv1 = 0
+        flag = 1
+    else:
+        delta_t1, cvv1 = mwcs(sig1,sig2,dt)
+        flag = 0
     filepath1 = f'{waveformdir}/{eve1.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}E'
     filepath2 = f'{waveformdir}/{eve2.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}E'
     sig1 = read_sac(filepath1, st1,et1,filter)
     sig2 = read_sac(filepath2, st2,et2,filter)
-    delta_t2, cvv2 = mwcs(sig1,sig2,dt)
+    if ((sig1 is None) | (sig2 is None)):
+        print(filepath1, st1,et1)
+        print(filepath2, st2,et2)                                           
+        delta_t2 = 0
+        cvv2 = 0
+        flag = 1
+    else:
+        delta_t2, cvv2 = mwcs(sig1,sig2,dt)
+        flag = 0
     delta_t = (delta_t1+delta_t2)/2.
     cvv  = (cvv1+cvv2)/2.
-    print(delta_t)
-    return arr1+delta_t-arr2, cvv
+    if flag == 1:
+        return 0, 0
+    else:
+        return arr1+delta_t-arr2, cvv
 
 # size of problem setting
 dt = 0.01
 
 # path of required file
-event_sel_path = './Demo/event.sel'
-sta_path = './Demo/station.dat'
-ttt_path = './Demo/tt_db/ttdb.txt'
-wavDir = './Demo/waveforms'
-dt_path = './Demo/dt.ct'
-pha_path = './Demo/hypoDD.pha'
+event_sel_path = './event.sel'
+sta_path = './station.dat'
+ttt_path = './tt_db/ttdb.txt'
+wavDir = './waveforms'
+dt_path = './dt.ct'
+pha_path = './hypoDD.pha'
 
 # for p type
 wb = 0.5
@@ -206,7 +233,7 @@ ccv_threshold = 0.1
 bp_filter = [-1, -1]
 
 # read travel time table
-tb = pd.read_csv('./Demo/tt_db/ttdb.txt', delim_whitespace=True,names=['gdist', 'dep', 'ptime', 'stime', 'prayp', 'srayp', 'phslow', 'shslow','P', 'S'])
+tb = pd.read_csv(ttt_path, delim_whitespace=True,names=['gdist', 'dep', 'ptime', 'stime', 'prayp', 'srayp', 'phslow', 'shslow','P', 'S'])
 tb_parameter = [3, 20, 0.02, 2]
 
 # read stations
@@ -254,31 +281,36 @@ for line in Lines:
 dtct.close()
 output.close()
 '''
+
 cores = 10
 print("OPENMPI version")
 if rank == 0:
     dtct = open(dt_path, 'r')
     Lines = dtct.readlines()
+    dtct.close()
     ss = np.linspace(0, len(Lines), cores+1).astype('int')
     seperation = []
     for i in range(1,len(ss)):
-        tmp = Lines[ss[i]:ss[i]+20]
+        tmp = Lines[ss[i]:ss[i]+200]
         for j in range(0,len(tmp)):
             if tmp[j][0] == '#':
                 seperation.append(j+ss[i])
                 break
-    for i in range(1, len(seperation)):
-        data = Lines[seperation[i-1]:seperation[i]]
-        comm.Send([data, MPI.INT], dest=i, tag=(70+i))
-    data = Lines[seperation[-1]:]
-    comm.Send([data, MPI.INT], dest=(cores-1), tag=(70+cores-1))
-    data = Lines[:seperation[0]]
-    dtct.close()
 else:
-    data = []
-    comm.Recv([data, MPI.INT], source=0, tag=(70+rank))
+    Lines = None
+    seperation = None
+Lines = comm.bcast(Lines, root=0)
+seperation = comm.bcast(seperation, root=0)
+
+if rank == 0:
+    data = Lines[0:seperation[0]]
+elif rank == cores-1:
+    data = Lines[seperation[-1]:]
+else:
+    data = Lines[seperation[rank-1]:seperation[rank]] 
 
 comm.barrier()
+
 output = open(f'tmp{rank}.output', 'w')
 for line in data:
     if line[0] == '#':
@@ -302,5 +334,14 @@ for line in data:
             continue
         output.write(f'{station} {delta_t:10.4f} {ccv:10.2f} {phase_type}\n')
 output.close()
+print(rank,' done')
 comm.barrier()
 print('done')
+
+if rank==0:
+    f_output = open('dt.cc', 'w')
+    for i in range(0, cores):
+        with open(f'tmp{i}.output') as infile:
+            for line in infile:
+                f_output.write(line)
+    f_output.close()
