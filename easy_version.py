@@ -59,7 +59,7 @@ def mwcs(sig1,sig2,dt):
     delta_t = []
     delta_weight = []
     delta_ccv = []
-    while ((minidx+wind_len)<=len(sig1)):
+    while (((minidx+wind_len)<=len(sig1)) & ((minidx+wind_len)<=len(sig2))):
         cci = sig1[minidx:minidx+wind_len]
         cri = sig2[minidx:minidx+wind_len]
         cc1 = np.correlate(cci, cri, 'valid')
