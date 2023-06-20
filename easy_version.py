@@ -134,8 +134,6 @@ def calcu_P(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
     sta = sta_df[sta_df['sta'] == station]
     eve1 = event_df[event_df['index'] == event1]
     eve2 = event_df[event_df['index'] == event2]
-    filepath1 = f'{waveformdir}/{eve1.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}Z'
-    filepath2 = f'{waveformdir}/{eve2.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}Z'
     date1 = datetime.strptime(f"{eve1.iloc[0]['date']}T{eve1.iloc[0]['hour']}:{eve1.iloc[0]['min']}:{eve1.iloc[0]['sec']}.{eve1.iloc[0]['msec']}", "%Y%m%dT%H:%M:%S.%f")
     date2 = datetime.strptime(f"{eve2.iloc[0]['date']}T{eve2.iloc[0]['hour']}:{eve2.iloc[0]['min']}:{eve2.iloc[0]['sec']}.{eve2.iloc[0]['msec']}", "%Y%m%dT%H:%M:%S.%f")
     p_s1 = calcu_ps_interval(eve1, sta,tb,tb_parameter)
@@ -146,11 +144,24 @@ def calcu_P(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
     et1 = date1+timedelta(seconds=arr1+wa)
     st2 = date2+timedelta(seconds=arr2-wb)
     et2 = date2+timedelta(seconds=arr2+wa)
+    if (st1.strftime("%Y%m%d") == eve1.iloc[0]["date"]):
+        fdate1 = eve1.iloc[0]["date"]
+    else:
+        fdate1 = st1.strftime("%Y%m%d")
+    if (st2.strftime("%Y%m%d") == eve2.iloc[0]["date"]):
+        fdate2 = eve2.iloc[0]["date"]
+    else:
+        fdate2 = st2.strftime("%Y%m%d")
+    filepath1 = f'{waveformdir}/{fdate1}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}Z'
+    filepath2 = f'{waveformdir}/{fdate2}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}Z'
     sig1 = read_sac(filepath1, st1,et1,filter)
     sig2 = read_sac(filepath2, st2,et2,filter)
     if ((sig1 is None) | (sig2 is None)):
-        print(filepath1, st1,et1)
-        print(filepath2, st2,et2)
+        f = open('wrong_file.txt','a')
+        f.write(f'{filepath1},{st1},{et1}\n')
+        f.write(f'{filepath2},{st2},{et2}\n')
+        #print(filepath1, st1,et1)
+        #print(filepath2, st2,et2)
         delta_t = 0
         cvv = 0
     else:
@@ -171,26 +182,40 @@ def calcu_S(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
     et1 = date1+timedelta(seconds=arr1+wa)
     st2 = date2+timedelta(seconds=arr2-wb)
     et2 = date2+timedelta(seconds=arr2+wa)
-    filepath1 = f'{waveformdir}/{eve1.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}N'
-    filepath2 = f'{waveformdir}/{eve2.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}N'
+    if (st1.strftime("%Y%m%d") == eve1.iloc[0]["date"]):
+        fdate1 = eve1.iloc[0]["date"]
+    else:
+        fdate1 = st1.strftime("%Y%m%d")
+    if (st2.strftime("%Y%m%d") == eve2.iloc[0]["date"]):
+        fdate2 = eve2.iloc[0]["date"]
+    else:
+        fdate2 = st2.strftime("%Y%m%d")
+    filepath1 = f'{waveformdir}/{fdate1}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}N'
+    filepath2 = f'{waveformdir}/{fdate2}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}N'
     sig1 = read_sac(filepath1, st1,et1,filter)
     sig2 = read_sac(filepath2, st2,et2,filter)
     if ((sig1 is None) | (sig2 is None)):
-        print(filepath1, st1,et1)
-        print(filepath2, st2,et2)                                           
+        f = open('wrong_file.txt','a')
+        f.write(f'{filepath1},{st1},{et1}\n')
+        f.write(f'{filepath2},{st2},{et2}\n')
+        #print(filepath1, st1,et1)
+        #print(filepath2, st2,et2)                                           
         delta_t1 = 0
         cvv1 = 0
         flag = 1
     else:
         delta_t1, cvv1 = mwcs(sig1,sig2,dt)
         flag = 0
-    filepath1 = f'{waveformdir}/{eve1.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}E'
-    filepath2 = f'{waveformdir}/{eve2.iloc[0]["date"]}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}E'
+    filepath1 = f'{waveformdir}/{fdate1}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}E'
+    filepath2 = f'{waveformdir}/{fdate2}/{sta.iloc[0]["net"]}.{sta.iloc[0]["sta"]}.{sta.iloc[0]["channel"][:2]}E'
     sig1 = read_sac(filepath1, st1,et1,filter)
     sig2 = read_sac(filepath2, st2,et2,filter)
     if ((sig1 is None) | (sig2 is None)):
-        print(filepath1, st1,et1)
-        print(filepath2, st2,et2)                                           
+        f = open('wrong_file.txt','a')
+        f.write(f'{filepath1},{st1},{et1}\n')
+        f.write(f'{filepath2},{st2},{et2}\n')
+        #print(filepath1, st1,et1)
+        #print(filepath2, st2,et2)                                           
         delta_t2 = 0
         cvv2 = 0
         flag = 1
@@ -239,7 +264,7 @@ tb_parameter = [3, 20, 0.02, 2]
 # read stations
 sta_df = pd.read_csv(sta_path, delim_whitespace=True, names=['longitude', 'latitude', 'net', 'sta','channel', 'elevation'])
 ns = len(sta_df)
-print('FDTCC reads %d stations\n'%ns)
+#print('FDTCC reads %d stations\n'%ns)
 
 # read events
 event_df = pd.read_csv(event_sel_path, delim_whitespace=True, names=['date', 'time', 'latitude','longitude', 'depth', 'tmp1', 'tmp2', 'tmp3', 'tmp4', 'index'])
@@ -248,10 +273,10 @@ event_df["min"] = event_df.apply(lambda x: f'{(x["time"]%pow(10,6))//pow(10,4)}'
 event_df["sec"] = event_df.apply(lambda x: f'{(x["time"]%pow(10,4))//pow(10,2)}', axis=1)
 event_df["msec"] = event_df.apply(lambda x: f'{x["time"]%pow(10,2)}', axis=1)
 ne = len(event_df)
-print("FDTCC reads %d events\n"%ne)
+#print("FDTCC reads %d events\n"%ne)
 
 # read dt.ct while output
-print('begin calculate cc')
+#print('begin calculate cc')
 '''
 output = open('dt.cc', 'w')
 dtct = open(dt_path, 'r')
@@ -283,7 +308,7 @@ output.close()
 '''
 
 cores = 10
-print("OPENMPI version")
+print("OPENMPI version", rank)
 if rank == 0:
     dtct = open(dt_path, 'r')
     Lines = dtct.readlines()
