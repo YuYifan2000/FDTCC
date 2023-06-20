@@ -87,10 +87,9 @@ def mwcs(sig1,sig2,dt):
         X = smooth(X, window="hanning", half_win=smoothing_half_win)
 
         dcs = np.abs(X)
-        freq_vec = scipy.fftpack.fftfreq(len(X) * 2, dt)[: wind_len // 2]
+        freq_vec = scipy.fftpack.fftfreq(wind_len, dt)[: wind_len // 2]
         index_range = np.argwhere(np.logical_and(freq_vec >= freqmin, freq_vec <= freqmax))
         coh = getCoherence(dcs, dref, dcur)
-        mcoh = np.mean(coh[index_range])
 
         # Get Weights
         w = 1.0 / (1.0 / (coh[index_range] ** 2) - 1.0)
@@ -116,7 +115,7 @@ def mwcs(sig1,sig2,dt):
     delta_t = np.array(delta_t)
     delta_weight = np.array(delta_weight)
     delta_ccv = np.array(delta_ccv)
-    return np.sum(delta_t*delta_weight/sum(delta_weight)), np.sum(delta_ccv*delta_weight) / np.sum(delta_weight)
+    return np.sum(delta_t*delta_weight)/np.sum(delta_weight), np.sum(delta_ccv*delta_weight) / np.sum(delta_weight)
 
 def calcu_ps_interval(eve, sta, tb, tb_parameter):
     trx = tb_parameter[0]
@@ -160,6 +159,7 @@ def calcu_P(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
         f = open('wrong_file.txt','a')
         f.write(f'{filepath1},{st1},{et1}\n')
         f.write(f'{filepath2},{st2},{et2}\n')
+        f.close()
         #print(filepath1, st1,et1)
         #print(filepath2, st2,et2)
         delta_t = 0
@@ -199,7 +199,8 @@ def calcu_S(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
         f.write(f'{filepath1},{st1},{et1}\n')
         f.write(f'{filepath2},{st2},{et2}\n')
         #print(filepath1, st1,et1)
-        #print(filepath2, st2,et2)                                           
+        #print(filepath2, st2,et2)
+        f.close()                                           
         delta_t1 = 0
         cvv1 = 0
         flag = 1
@@ -215,7 +216,8 @@ def calcu_S(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavef
         f.write(f'{filepath1},{st1},{et1}\n')
         f.write(f'{filepath2},{st2},{et2}\n')
         #print(filepath1, st1,et1)
-        #print(filepath2, st2,et2)                                           
+        #print(filepath2, st2,et2)
+        f.close()                                           
         delta_t2 = 0
         cvv2 = 0
         flag = 1
@@ -257,24 +259,31 @@ ccv_threshold = 0.1
 
 bp_filter = [-1, -1]
 
-# read travel time table
-tb = pd.read_csv(ttt_path, delim_whitespace=True,names=['gdist', 'dep', 'ptime', 'stime', 'prayp', 'srayp', 'phslow', 'shslow','P', 'S'])
 tb_parameter = [3, 20, 0.02, 2]
 
-# read stations
-sta_df = pd.read_csv(sta_path, delim_whitespace=True, names=['longitude', 'latitude', 'net', 'sta','channel', 'elevation'])
-ns = len(sta_df)
-#print('FDTCC reads %d stations\n'%ns)
+if rank == 0:
+    # read travel time table
+    tb = pd.read_csv(ttt_path, delim_whitespace=True,names=['gdist', 'dep', 'ptime', 'stime', 'prayp', 'srayp', 'phslow', 'shslow','P', 'S'])
 
-# read events
-event_df = pd.read_csv(event_sel_path, delim_whitespace=True, names=['date', 'time', 'latitude','longitude', 'depth', 'tmp1', 'tmp2', 'tmp3', 'tmp4', 'index'])
-event_df["hour"] = event_df.apply(lambda x: str(x["time"]//pow(10,6)).split('.')[0], axis=1)
-event_df["min"] = event_df.apply(lambda x: f'{(x["time"]%pow(10,6))//pow(10,4)}', axis=1)
-event_df["sec"] = event_df.apply(lambda x: f'{(x["time"]%pow(10,4))//pow(10,2)}', axis=1)
-event_df["msec"] = event_df.apply(lambda x: f'{x["time"]%pow(10,2)}', axis=1)
-ne = len(event_df)
-#print("FDTCC reads %d events\n"%ne)
+    # read stations
+    sta_df = pd.read_csv(sta_path, delim_whitespace=True, names=['longitude', 'latitude', 'net', 'sta','channel', 'elevation'])
+    #print('FDTCC reads %d stations\n'%len(sta_df))
 
+    # read events
+    event_df = pd.read_csv(event_sel_path, delim_whitespace=True, names=['date', 'time', 'latitude','longitude', 'depth', 'tmp1', 'tmp2', 'tmp3', 'tmp4', 'index'])
+    event_df["hour"] = event_df.apply(lambda x: str(x["time"]//pow(10,6)).split('.')[0], axis=1)
+    event_df["min"] = event_df.apply(lambda x: f'{(x["time"]%pow(10,6))//pow(10,4)}', axis=1)
+    event_df["sec"] = event_df.apply(lambda x: f'{(x["time"]%pow(10,4))//pow(10,2)}', axis=1)
+    event_df["msec"] = event_df.apply(lambda x: f'{x["time"]%pow(10,2)}', axis=1)
+    #print("FDTCC reads %d events\n"%len(event_df))
+else:
+    tb = None
+    sta_df = None
+    event_df = None
+
+tb = comm.bcast(tb, root=0)
+sta_df = comm.bcast(sta_df, root=0)
+event_df = comm.bcast(event_df, root=0)
 # read dt.ct while output
 #print('begin calculate cc')
 '''
@@ -352,7 +361,7 @@ for line in data:
         if phase_type == 'P':
             delta_t, ccv = calcu_P(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavDir, bp_filter, tb, tb_parameter)
         elif phase_type == 'S':
-            delta_t, ccv = calcu_S(station, arr1, arr2, event1, event2, sta_df, event_df, wb, wa, wavDir, bp_filter, tb,tb_parameter)
+            delta_t, ccv = calcu_S(station, arr1, arr2, event1, event2, sta_df, event_df, wbs, was, wavDir, bp_filter, tb,tb_parameter)
         else:
             continue
         if (ccv<ccv_threshold):
