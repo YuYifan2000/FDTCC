@@ -62,10 +62,10 @@ def mwcs(sig1,sig2,dt):
     while (((minidx+wind_len)<=len(sig1)) & ((minidx+wind_len)<=len(sig2))):
         cci = sig1[minidx:minidx+wind_len]
         cri = sig2[minidx:minidx+wind_len]
-        cc1 = np.correlate(cci, cri, 'valid')
-        cc2 = np.correlate(cri,cri, 'valid')
-        cc3 = np.correlate(cci,cci,'valid')
-        ccv = np.max(np.abs(cc1 / (np.sqrt(cc2*cc3))))
+        cc1 = np.correlate(sig1, sig2, 'full')
+        cc2 = np.correlate(sig1,sig1, 'valid')
+        cc3 = np.correlate(sig2,sig2,'valid')
+        ccv = np.max(np.abs(cc1 / np.sqrt(cc2*cc3) ) )
         delta_ccv.append(ccv)
 
         cci = scipy.signal.detrend(cci, type='linear')
